@@ -10,73 +10,12 @@ from tensorflow.keras import Model
 from tensorflow.keras.optimizers import Adam, RMSprop
 
 from collections import deque
-from IPython.display import clear_output
-
-
-seed = 100
-random.seed(seed)
-np.random.seed(seed)
-
-class NNAgent:
-    
-    def __init__(self):
-        self.max = 0
-        self.scores = list()
-        self.memory = list()
-        self.model = self._build_model()
-        
-    def _build_model(self):
-        model = Sequential()
-        model.add(Dense(12, input_dim = 4, activation="relu"))
-        model.add(Dense(1, activation="sigmoid"))
-        model.compile(loss="binary_crossentropy", optimizer=RMSprop(learning_rate=0.001))
-        return model
-    
-    def act(self, state, env):
-        if random.random() <=0.5:
-            return env.action_space.sample()
-        action = np.where(
-            self.model.predict(state, batch_size = None)[0, 0]>0.5, 1, 0
-            )
-        return action
-    
-    def train_model(self, state, action):
-        self.model.fit(state, np.array([action]), epochs=1, verbose=False)
-        
-    def learn(self, episodes, env):
-        for e in range(1, episodes+1):
-            print(f"episode : {e}/{episodes}")
-            state = env.reset()[0]
-            for i in range(201):
-                state = np.reshape(state, [1, 4])
-                action = self.act(state, env)
-                next_state, reward, done, _, info = env.step(action)
-                print(f" step={i} | reward={i+1} | done={done}")
-                env.render
-                time.sleep(0.2)
-                if done:
-                    print(" --- Fail ---")
-                    time.sleep(2)
-                    clear_output(wait=True)
-                    score = i + 1
-                    self.scores.append(score)
-                    self.max = max(score, self.max)
-                    print(f" score={score} | max={self.max}")
-                    break
-                self.memory.append((state, action))
-                self.train_model(state, action)
-                state = next_state
-                
-
-
-
-
-
+#from IPython.display import clear_output
 
 
 class DQLAgent:
     
-    def __init__(self, env, gamma=0.95, hu=24, opt=Adam, lr=0.001, finish=False):
+    def __init__(self, env, gamma=0.95, hu=24, opt=Adam, lr=0.001, finish=False, render=False):
         self.finish = finish
         self.env = env
         self.epsilon = 1
@@ -101,7 +40,7 @@ class DQLAgent:
     def act(self, state):
         if random.random() <= self.epsilon:
             return self.env.action_space.sample()
-        action = self.model.predict(state)[0]
+        action = self.model.predict(state, verbose=0)[0]
         return np.argmax(action)
     
     def replay(self):
@@ -109,30 +48,30 @@ class DQLAgent:
         for state, action, reward, next_state, done in batch:
             if not done:
                 reward += self.gamma * np.amax(
-                    self.model.predict(next_state)[0]
+                    self.model.predict(next_state, verbose=0)[0]
                 )
-                target = self.model.predict(state)
+                target = self.model.predict(state, verbose=0)
                 target[0, action] = reward
-                self.model.fit(state, target, epochs=1, verbose=False)
+                self.model.fit(state, target, epochs=1, verbose=0)
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_min
     
     def learn(self, episodes):
         trewards = []
         for e in range(1, episodes+1):
-            state = self.env.reset()[0]
+            state = self.env.reset()
             state = np.reshape(state, [1, self.osn])
-            for i in range(5000):
+            for i in range(500):
                 action = self.act(state)
-                next_state, reward, done, _, info = self.env.step(action)
+                next_state, reward, done, info = self.env.step(action)
                 next_state = np.reshape(next_state, [1, self.osn])
                 
                 self.memory.append([state, action, reward, next_state, done])
                 
                 state = next_state
-                
+                av = 0
                 if done:
-                    clear_output(True)
+                    #clear_output(True)
                     treward = i + 1
                     trewards.append(treward)
                     av = sum(trewards[-25:]) / 25
@@ -153,11 +92,11 @@ class DQLAgent:
     def test(self, episodes):
         trewards = []
         for e in range(1, episodes+1):
-            state = self.env.reset()[0]
-            for i in range(5001):
+            state = self.env.reset()
+            for i in range(500):
                 state = np.reshape(state, [1, self.osn])
-                action = np.argmax(self.model.predict(state)[0])
-                next_state, reward, done, info = env.step(action)
+                action = np.argmax(self.model.predict(state, verbose=0)[0])
+                next_state, reward, done, info = self.env.step(action)
                 state = next_state
                 if done:
                     treward = i+1
@@ -165,6 +104,10 @@ class DQLAgent:
                     print("episode : {:4d}/{}  | treward : {:4d}".format(e, episodes, treward), end="\r")
                     break
         return trewards
+
+
+
+
 
 
 
@@ -207,17 +150,17 @@ class FQLAgent:
     def act(self, state):
         if random.random() <= self.epsilon:
             return self.learn_env.action_space.sample()
-        action = self.model.predict(state)[0, 0]
+        action = self.model.predict(state, verbose = 0)[0, 0]
         return np.argmax(action)
     
     def replay(self):
         batch = random.random(self.memory, self.batch_size)
         for state, action, reward, next_state, done in batch:
             if not done:
-                reward += self.gamma * np.amax(self.model.predict(next_state)[0, 0])
-            target = self.model.predict(state)
+                reward += self.gamma * np.amax(self.model.predict(next_state, verbose=0)[0, 0])
+            target = self.model.predict(state, verbose=0)
             target[0, 0, action] = reward
-            self.model.fit(state, target, epochs=1, verbose=False)
+            self.model.fit(state, target, epochs=1, verbose=0)
         
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
@@ -263,7 +206,7 @@ class FQLAgent:
                                    self.valid_env.n_features])
         
         for _ in range(1000):
-            action = np.argmax(self.model.predict(state)[0, 0])
+            action = np.argmax(self.model.predict(state, verbose=0)[0, 0])
             next_state, reward, done, info = self.valid_env.step(action)
             state = np.reshape(next_state, [1, self.valid_env.lags,
                                             self.valid_env.n_features])
